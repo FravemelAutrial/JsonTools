@@ -7,11 +7,183 @@
 (*  Dual licence GPLv3 LGPLv3 released August 2019      *)
 (*                                                      *)
 (********************************************************)
+(*  migrated to delphi5 
+JSON Tools for Pascal https://www.getlazarus.org/json/
+
+We have decided to write a small yet capable JSON parser and JSON builder. A JSON parser converts plain text in Javascript object notation format into a set of nodes which can be queried. A JSON builder allows you to dynamically create and manipulate nodes, then output those nodes as valid JSON text.
+Update
+We've added a new page to test our our new parser in comparison to several other pascal based parsers. You can read more about these tests here.
+
+The results show that our parser is dramatically better than the other parsers we were able to find and test. Better both in terms of speed and correctness. Though we believe our test are fair, they are by no means exhaustive, some please be mindful of that fact when considering our results.
+Why use JSON?
+JSON is a standardized text data format that has increasingly becoming ubiquitous. It works on any computer system, its portable, its concise, and its human readable and editable. Many web based API calls require either JSON content as post data, or return JSON content as results. Many desktop systems are switching to JSON as a file format for configurations, settings, layouts, or other data persisted to disk.
+Why write a JSON parser when one already exists?
+The reason we wrote this parser and builder comes down to two primary reasons.
+we wanted a very simple interface to work with JSON in Pascal that works in the manner to which we are accustomed. More on this below.
+
+We wanted to write a fairly small yet complete solution cleanly implemented in one class with no dependencies other than the SysUtils and Classes units.
+How does our JSON parser make working with JSON easier?
+Our parser is very easy to use. Simply add the JsonTools unit to your uses clause, then you can parse a valid JSON document like so:
+N := TJsonNode.Create;
+N.Parse(YourJsonText);
+Where you are done with your TJsonNode simply write Free. You only need to free a TJsonNode if you created it directly.
+N.Free;
+In addition to calling Parse you can also use these methods to parse a JSON document.
+N.Value := YourJsonText;
+Or if the JSON is in a file you might write:
+N.LoadFromFile(YourJsonFileName);
+These methods do the same thing as Parse. They build a tree of JSON nodes by parsing JSON data. To get your JSON text data back out of any node you can simply write:
+WriteLn(N.Value);
+And the nodes are converted back into a nicely formatted JSON document. If you wanted to print out each node, then the entire document you might write:
+N.Value := '[ "Hello", "World!" ]';
+for C in N do
+  WriteLn(C.Value);
+WriteLn(N.Value);
+Which would result in the following output:
+"Hello"
+"World!"
+[
+    "Hello",
+    "World!"
+]
+If you are unsure if your source JSON text is valid, you can write this bit of code to check if it is correct:
+S := '{ this is not valid json }';
+if N.TryParse(S) then
+  // Do something with your data
+else
+  // Your input did not contain valid JSON text
+More things you can do with JSON
+Now that we know how this JSON object can parse text, let's look at an example of how it can navigate and manipulate JSON nodes. Here is a bit of JSON text data we'll be using in a few examples to follow.
+{
+    "name": "Alice Brown",
+    "sku": "54321",
+    "price": 199.95,
+    "shipTo": {
+        "name": "Bob Brown",
+        "address": "456 Oak Lane",
+        "city": "Pretendville",
+        "state": "HI",
+        "zip": "98999"
+    },
+    "billTo": {
+        "name": "Alice Brown",
+        "address": "456 Oak Lane",
+        "city": "Pretendville",
+        "state": "HI",
+        "zip": "98999"
+    }
+}
+If this data were in a file named orders.json, we could use it like so:
+N.LoadFromFile('orders.json');
+WriteLn('The price is ', N.Find('price').Value);
+WriteLn('The customer is ', N.Find('billTo/name').Value);
+The output of which would be:
+The price is 199.95
+The customer is "Alice Brown"
+If you wanted to change the shipTo to match the billTo, you could simply write:
+N.Find('shipTo').Value := N.Find('billTo').Value;
+And all the nodes under billTo will be copied over the shipTo. What this means is that my object can parse text on the node level, allowing you to compose a JSON document from several sources or move and copy data easily. You could also load and save various child nodes from separate files or streams. How cool is that?
+
+If you just want to change the name of the customer you could write:
+N.Find('billTo/name').AsString := 'Joe Schmoe';
+Notice we are using AsString above instead of Value. This is due to the nature of the Value property. Whenever you set Value the current node will try to parse the incoming value as a JSON fragment. The input value of 'Joe Schmoe' is not valid JSON. To let our object know we intend to set a string value we can use the AsString property.
+
+If you do not want to use AsString would need to write this statement instead, which makes 'Joe Schmoe' a valid JSON string:
+N.Find('billTo/name').Value := '"Joe Schmoe"';
+Notice we've enclosed out new name in " double quote characters. Double quotes are required to create JSON strings. Since we've added double quote characters the second statement now feeds a valid value to our Value property.
+
+Here are some examples of valid values you can use when setting the Value property of a node.
+N.Value := 'true';   // node becomes a bool node
+N.Value := '3.1415'; // node becomes a number node
+N.Value := 'null';   // node becomes a null node
+N.Value := '[]';     // node becomes an array
+N.Value := '{}';     // node becomes an object
+In the examples above N is changed to a different kind of node with each statement. If N is the root node, the first three statements will fail, as a root node is required to be either an object or array.
+
+Alternately, the five statements below do the exact same thing as the five statements above, but with a bit of added type safety:
+N.AsBoolean := True;
+N.AsNumber := 3.1415;
+N.AsNull;
+N.AsArray;
+N.AsObject;
+Note that AsNull, AsArray, and AsObject do not have an := assignment operator. This is because the Value of each of these types is fixed. A null node is null, an array node is array, and an object node is object. These three statements have the effect of converting the node kind and resetting its value.
+Switching to another node
+As noted in the last section, attempting to set the root node to a value that is not an object or an array is an error. The JSON standard dictates that the root level of all JSON objects must either be an object or an array
+
+To switch to another node you might write:
+N := N.Find('shipTo/name');
+N.Add('first', 'Joe');
+N.Add('last', 'Schmoe');
+If the shipTo/name was a string kind, it will switch to an object kind when a node is added. After temporarily switching nodes, to get a reference back to our root we could type:
+WriteLn(N.Value);
+N := N.Root;
+And now we can be sure N refers to the root node again. The output of above snippet would have been:
+{
+    "first": "Joe",
+    "last": "Schmoe"
+}
+Adding and removing nodes
+Nodes can be added or removed programatically using special purpose methods. If you want to add a value to an object (or an array) you can write:
+N.Add('note', 'Customer requested we change the ship to address');
+This would add the following to our JSON object:
+"note": "Customer requested we change the ship to address"
+In our pascal code, if N is an array then the first parameter will be ignored as arrays in JSON do not have named values for their child nodes.
+
+Also notice when we use the Add method we do not need to use JSON strings. We can just use normal strings and they will be converted to JSON format internally. This internal formatting allows us to add strings with multiple lines or other format encoding, and internally they will be retained as JSON compatible strings.
+
+Add is overloaded allow you to add bool, number, string, and more:
+N.Add('discount', -8.50);   // adds a number node 
+N.Add('verified', True);    // adds a bool node 
+N.Add('wishlist', nkArray); // adds an array node
+A particular feature of JSON is that it only allows one node of a given name at specific level. This means you Add the same name again, then the existing node will be returned, and its value will be changed to match the second argument of Add.
+
+A child node can be removed either using the Delete method or Clear method.
+N.Delete('note');   // removes the note node
+N.Delete('shipTo'); // removes the shipTo node
+To delete items in an array, simply use the string representation of the array index:
+N.ToArray.Add('note', 'Please call the customer');
+N.Delete('0');
+In the example above our N is converted to an array and an item is added. Since arrays do not use names to index their child nodes, the first argument 'note' is discarded. The second line in the example removes the 0 (arrays are 0 based) item. If N was not as array before the first line line, then its values are discarded and it would only contain our string "Please call the customer".
+
+To remove all child nodes of an object or array, simply type:
+N.Clear;
+This will remove every node below the current node. Clear has no effect on null, bool, number, or string nodes.
+The basic properties of every JSON node
+Every node at its core stores the following information:
+property Root: TJsonNode     // the root of your JSON document (read only)
+property Parent: TJsonNode   // the parent of your JSON node (read only)
+property Kind: TJsonNodeKind // the kind of node, such as object, array, string etc (read write)
+property Name: string        // the name of node (read write)
+property Value: string       // the value of the node in JSON form (read write)
+The Kind property uses an enumerated type defined as one of these possible values:
+nkObject,  nkArray, nkBool, nkNull, nkNumber, nkString
+When Kind is set to a different than current value, the node is reset. For object and array kinds this means all children are removed. For bool, null, number, and string kinds the reset values are false, null, 0, and "" respectively.
+
+If a duplicate Name is set, then the existing node of the same name is removed and replaced by the current node. You can only set the name of a node if the parent is an object, otherwise any attempts to change the name are ignored.
+
+When Value is set, internally the value you pass is parsed as JSON and the entire value portion of the node is replaced, potentially changing the node kind in the process. It is important to note that the root node value must be a valid JSON object or array. It cannot be any other kind.
+
+Here are a few examples of how the Value property can be used.
+N.Child('sku').Value := '[ "54321", "98765" ]'; // sku becomes an array of values
+N.Find('shipTo/name').Value := '{ "id": 5028, "primary": true }'; // name becomes object
+In addition to being able to use the for...in enumerator on any node, you can also use these three properties to enumerate child nodes:
+function Child(Index: Integer): TJsonNode;     // get a child node by index
+function Child(const Name: string): TJsonNode; // get a child node by name
+property Count: Integer;                       // return the number of child nodes
+Note that Child is not the same as the previously mentioned Find method. The Find method searches a path, while the Child method looks for an exact name match directly under the current node.
+*)
+
+
+
 unit JsonTools;
 
-{$mode delphi}
+
+
+
+
 
 interface
+
 
 uses
   Classes, SysUtils;
@@ -43,7 +215,7 @@ type
 
 { TJsonNodeEnumerator is used to enumerate 'for ... in' statements }
 
-  TJsonNodeEnumerator = record
+  TJsonNodeEnumerator = object
   private
     FNode: TJsonNode;
     FIndex: Integer;
@@ -145,7 +317,7 @@ type
     { Search for a node using a path string }
     function Find(const Path: string): TJsonNode;
     { Format the node and all its children as json }
-    function ToString: string; override;
+    function ToString: string;
     { Root node is read only. A node the root when it has no parent. }
     property Root: TJsonNode read GetRoot;
     { Parent node is read only }
@@ -206,7 +378,7 @@ type
   TJsonTokenKind = (tkEnd, tkError, tkObjectOpen, tkObjectClose, tkArrayOpen,
     tkArrayClose, tkColon, tkComma, tkNull, tkFalse, tkTrue, tkString, tkNumber);
 
-  TJsonToken = record
+  TJsonToken = object
     Head: PChar;
     Tail: PChar;
     Kind: TJsonTokenKind;
@@ -215,6 +387,15 @@ type
 
 const
   Hex = ['0'..'9', 'A'..'F', 'a'..'f'];
+
+function StrToFloatDef (str: string; fDef: Single): Single;
+begin
+  try
+    Result:= StrToFloat(str);
+  except
+    Result:= fDef;
+  end;
+end;
 
 function TJsonToken.Value: string;
 begin
@@ -247,70 +428,71 @@ begin
   T.Head := C;
   T.Tail := C;
   T.Kind := tkEnd;
-  if C^ = #0 then
-    Exit(False);
+  if C^ = #0 then begin
+    Result:=FALSE; Exit;
+  end;
   if C^ = '{' then
   begin
     Inc(C);
     T.Tail := C;
     T.Kind := tkObjectOpen;
-    Exit(True);
+    Result:=TRUE; Exit;
   end;
   if C^ = '}' then
   begin
     Inc(C);
     T.Tail := C;
     T.Kind := tkObjectClose;
-    Exit(True);
+    Result:=TRUE; Exit;
   end;
   if C^ = '[' then
   begin
     Inc(C);
     T.Tail := C;
     T.Kind := tkArrayOpen;
-    Exit(True);
+    Result:=TRUE; Exit;
   end;
   if C^ = ']' then
   begin
     Inc(C);
     T.Tail := C;
     T.Kind := tkArrayClose;
-    Exit(True);
+    Result:=TRUE; Exit;
   end;
   if C^ = ':' then
   begin
     Inc(C);
     T.Tail := C;
     T.Kind := tkColon;
-    Exit(True);
+    Result:=TRUE; Exit;
   end;
   if C^ = ',' then
   begin
     Inc(C);
     T.Tail := C;
     T.Kind := tkComma;
-    Exit(True);
+    Result:=TRUE; Exit;
   end;
   if (C[0] = 'n') and (C[1] = 'u') and (C[2] = 'l') and (C[3] = 'l')  then
   begin
     Inc(C, 4);
     T.Tail := C;
     T.Kind := tkNull;
-    Exit(True);
+    Result:=TRUE; Exit;
   end;
   if (C[0] = 'f') and (C[1] = 'a') and (C[2] = 'l') and (C[3] = 's') and (C[4] = 'e')  then
   begin
     Inc(C, 5);
     T.Tail := C;
     T.Kind := tkFalse;
-    Exit(True);
+    Result:=TRUE; Exit;
   end;
   if (C[0] = 't') and (C[1] = 'r') and (C[2] = 'u') and (C[3] = 'e')  then
   begin
     Inc(C, 4);
     T.Tail := C;
     T.Kind := tkTrue;
-    Exit(True);
+    Result:=TRUE; Exit;
   end;
   if C^ = '"'  then
   begin
@@ -326,7 +508,7 @@ begin
           begin
             T.Tail := C;
             T.Kind := tkError;
-            Exit(False);
+            Result:=FALSE; Exit;
           end;
       end;
     until C^ in [#0, #10, #13, '"'];
@@ -335,11 +517,11 @@ begin
       Inc(C);
       T.Tail := C;
       T.Kind := tkString;
-      Exit(True);
+      Result:=TRUE; Exit;
     end;
     T.Tail := C;
     T.Kind := tkError;
-    Exit(False);
+    Result:=FALSE; Exit;
   end;
   if C^ in ['-', '0'..'9'] then
   begin
@@ -361,7 +543,7 @@ begin
         begin
           T.Tail := C;
           T.Kind := tkError;
-          Exit(False);
+          Result:=FALSE; Exit;
         end;
       end;
       if C^ in ['E', 'e'] then
@@ -380,12 +562,12 @@ begin
         begin
           T.Tail := C;
           T.Kind := tkError;
-          Exit(False);
+          Result:=FALSE; Exit;
         end;
       end;
       T.Tail := C;
       T.Kind := tkNumber;
-      Exit(True);
+      Result:=TRUE; Exit;
     end;
   end;
   T.Kind := tkError;
@@ -694,8 +876,9 @@ end;
 
 function TJsonNode.GetName: string;
 begin
-  if FParent = nil then
-    Exit('0');
+  if FParent = nil then begin
+    Result:='0';Exit;
+  end;
   if FParent.FKind = nkArray then
     Result := IntToStr(FParent.FList.IndexOf(Self))
   else
@@ -777,7 +960,7 @@ begin
     Clear;
     FKind := nkBool;
     FValue := 'false';
-    Exit(False);
+    Result:=FALSE; Exit;
   end;
   Result := FValue = 'true';
 end;
@@ -806,7 +989,7 @@ begin
     Clear;
     FKind := nkString;
     FValue := '""';
-    Exit('');
+    Result:= '';Exit;
   end;
   Result := JsonStringDecode(FValue);
 end;
@@ -832,7 +1015,7 @@ begin
     Clear;
     FKind := nkNumber;
     FValue := '0';
-    Exit(0);
+    Result:=0; Exit;
   end;
   Result := StrToFloatDef(FValue, 0);
 end;
@@ -889,7 +1072,7 @@ begin
     Error(SNodeNotCollection);
 end;
 
-function TJsonNode.Add(const Name: string; K: TJsonNodeKind = nkObject): TJsonNode; overload;
+function TJsonNode.Add(const Name: string; K: TJsonNodeKind = nkObject): TJsonNode; 
 begin
   case K of
     nkObject, nkArray: Result := Add(K, Name, '');
@@ -900,19 +1083,19 @@ begin
   end;
 end;
 
-function TJsonNode.Add(const Name: string; B: Boolean): TJsonNode; overload;
+function TJsonNode.Add(const Name: string; B: Boolean): TJsonNode;
 const
   Bools: array[Boolean] of string = ('false', 'true');
 begin
   Result := Add(nkBool, Name, Bools[B]);
 end;
 
-function TJsonNode.Add(const Name: string; const N: Double): TJsonNode; overload;
+function TJsonNode.Add(const Name: string; const N: Double): TJsonNode;
 begin
   Result := Add(nkNumber, Name, FloatToStr(N));
 end;
 
-function TJsonNode.Add(const Name: string; const S: string): TJsonNode; overload;
+function TJsonNode.Add(const Name: string; const S: string): TJsonNode;
 begin
   Result := Add(nkString, Name, JsonStringEncode(S));
 end;
@@ -986,14 +1169,16 @@ begin
     if FKind = nkArray then
     begin
       I := StrToIntDef(Name, -1);
-      if (I > -1) and (I < FList.Count) then
-        Exit(TJsonNode(FList[I]));
+      if (I > -1) and (I < FList.Count) then begin
+        Result:=(TJsonNode(FList[I]));Exit;
+      end;
     end
     else for I := 0 to FList.Count - 1 do
     begin
       N := TJsonNode(FList[I]);
-      if N.FName = Name then
-        Exit(N);
+      if N.FName = Name then begin
+        Result:=(N);Exit;
+      end;
     end;
 end;
 
@@ -1004,8 +1189,9 @@ var
   S: string;
 begin
   Result := nil;
-  if Path = '' then
-    Exit(Child(''));
+  if Path = '' then begin
+    Result:= (Child(''));Exit;
+  end;
   if Path[1] = '/' then
   begin
     N := Self;
@@ -1018,11 +1204,13 @@ begin
   if A^ = '/' then
   begin
     Inc(A);
-    if A^ = #0 then
-      Exit(N);
+    if A^ = #0 then begin
+      Result:=(N);Exit;
+    end;
   end;
-  if A^ = #0 then
-    Exit(N.Child(''));
+  if A^ = #0 then begin
+    Result:=(N.Child(''));Exit;
+  end;
   B := A;
   while B^ > #0 do
   begin
@@ -1030,8 +1218,9 @@ begin
     begin
       SetString(S, A, B - A);
       N := N.Child(S);
-      if N = nil then
-        Exit(nil);
+      if N = nil then begin
+        Result:=(nil);Exit;
+      end;
       A := B + 1;
       B := A;
     end
@@ -1055,8 +1244,9 @@ function TJsonNode.Format(const Indent: string): string;
     I, J: Integer;
     S: string;
   begin
-    if (FList = nil) or (FList.Count = 0) then
-      Exit(' ');
+    if (FList = nil) or (FList.Count = 0) then begin
+      Result:=(' ');Exit;
+    end;
     Result := #10;
     J := FList.Count - 1;
     S := Indent + #9;
@@ -1198,8 +1388,9 @@ var
   R: string;
   I: Integer;
 begin
-  if S = '' then
-    Exit('""');
+  if S = '' then begin
+    Result:=('""');Exit;
+  end;
   C := PChar(S);
   R := '';
   SetLength(R, Len(C));
@@ -1240,7 +1431,7 @@ end;
 
 { Convert a json string to a pascal string }
 
-function UnicodeToString(C: LongWord): string; inline;
+function UnicodeToString(C: LongWord): string;
 begin
   if C = 0 then
     Result := #0
@@ -1259,7 +1450,7 @@ begin
     Result := '';
 end;
 
-function UnicodeToSize(C: LongWord): Integer; inline;
+function UnicodeToSize(C: LongWord): Integer;
 begin
   if C = 0 then
     Result := 1
@@ -1275,7 +1466,7 @@ begin
     Result := 0;
 end;
 
-function HexToByte(C: Char): Byte; inline;
+function HexToByte(C: Char): Byte;
 const
   Zero = Ord('0');
   UpA = Ord('A');
@@ -1289,7 +1480,7 @@ begin
     Result := Ord(C) - LoA + 10;
 end;
 
-function HexToInt(A, B, C, D: Char): Integer; inline;
+function HexToInt(A, B, C, D: Char): Integer;
 begin
   Result := HexToByte(A) shl 12 or HexToByte(B) shl 8 or HexToByte(C) shl 4 or
     HexToByte(D);
@@ -1301,14 +1492,16 @@ function JsonStringDecode(const S: string): string;
   var
     I, J: Integer;
   begin
-    if C^ <> '"'  then
-      Exit(0);
+    if C^ <> '"'  then begin
+      Result:=0; Exit;
+    end;
     Inc(C);
     I := 0;
     while C^ <> '"' do
     begin
-      if C^ = #0 then
-        Exit(0);
+      if C^ = #0 then begin
+        Result:=0; Exit;
+      end;
       if C^ = '\' then
       begin
         Inc(C);
@@ -1317,16 +1510,19 @@ function JsonStringDecode(const S: string): string;
           if (C[1] in Hex) and (C[2] in Hex) and (C[3] in Hex) and (C[4] in Hex) then
           begin
             J := UnicodeToSize(HexToInt(C[1], C[2], C[3], C[4]));
-            if J = 0 then
-              Exit(0);
+            if J = 0 then begin
+              Result:=0; Exit;
+            end;
             Inc(I, J - 1);
             Inc(C, 4);
           end
-          else
-            Exit(0);
+          else begin
+            Result:=0; Exit;
+          end;
         end
-        else if C^ = #0 then
-          Exit(0)
+        else if C^ = #0 then begin
+          Result:=0; Exit;
+        end;
       end;
       Inc(C);
       Inc(I);
@@ -1343,9 +1539,10 @@ var
   H: string;
 begin
   C := PChar(S);
-  I := Len(C);
-  if I < 1 then
-    Exit('');
+  I := Len(C); //Len(C) daba 0
+  if I < 1 then begin
+    Result:=('');Exit;
+  end;
   R := '';
   SetLength(R, I);
   I := 1;
@@ -1406,6 +1603,7 @@ const
   function EnumNodes(P: TJsonNode; const Indent: string): string;
   var
     N: TJsonNode;
+    Enum: TJsonNodeEnumerator;
     S: string;
   begin
     Result := '';
@@ -1413,7 +1611,10 @@ const
       S := 'item'
     else
       S := '';
-    for N in P do
+    Enum:= P.GetEnumerator;
+    N:= Enum.GetCurrent;
+    while Enum.MoveNext do
+//    for N in P do
     begin
       Result := Result + Indent + '<' + S + N.Name + Kinds[N.Kind];
       case N.Kind of
@@ -1427,6 +1628,8 @@ const
       else
         Result := Result + '>' + Escape(N) + '</' +  S + N.Name + '>'#10;
       end;
+
+      N:= Enum.GetCurrent;
     end;
   end;
 
