@@ -7,7 +7,7 @@
 (*  Dual licence GPLv3 LGPLv3 released August 2019      *)
 (*                                                      *)
 (********************************************************)
-(*  migrated to delphi5 
+(*  migrated to delphi5
 JSON Tools for Pascal https://www.getlazarus.org/json/
 
 We have decided to write a small yet capable JSON parser and JSON builder. A JSON parser converts plain text in Javascript object notation format into a set of nodes which can be queried. A JSON builder allows you to dynamically create and manipulate nodes, then output those nodes as valid JSON text.
